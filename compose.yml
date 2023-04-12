@@ -1,0 +1,12 @@
+services:
+  app:
+    image: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: ./data
+        target: /usr/src/app/data
