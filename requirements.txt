@@ -1,6 +1,5 @@
 llama-index
-langchain
 requests
 beautifulsoup4
-transformers
-pinecone-client
+sentence-transformers
+supabase
