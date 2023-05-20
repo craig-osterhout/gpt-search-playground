@@ -4,3 +4,5 @@ requests
 beautifulsoup4
 transformers
 pinecone-client
+openai
+supabase
