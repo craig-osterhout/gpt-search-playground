@@ -1,2 +1,0 @@
-https://docs.docker.com/billing/cycle/
-https://docs.docker.com/billing/details/
