@@ -2,7 +2,7 @@ This repo may or may not work. I use it to experiment with different things and 
 
 ## Create embeddings
 
-1. Clone this repo.
+1. Clone this repo. Make sure you switch to the correct branch.
 
 2. Create a free Pinecone account, and a paid (free for a month) OpenAI account.
 
