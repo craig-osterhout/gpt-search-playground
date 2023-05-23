@@ -1,12 +1,8 @@
 services:
   app:
-    image: app
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
+    image: app:latest
+    ports:
+      - "9000:8080"
     env_file:
       - .env
-    volumes:
-      - type: bind
-        source: ./data
-        target: /usr/src/app/data

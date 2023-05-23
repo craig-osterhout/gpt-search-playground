@@ -1,6 +1,6 @@
 requests
 beautifulsoup4
 openai
-pinecone
-sitemapparser
+pinecone-client
+site-map-parser
 nltk
