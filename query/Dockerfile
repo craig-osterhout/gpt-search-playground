@@ -7,6 +7,8 @@ COPY requirements.txt  .
 RUN  pip3 install --no-cache-dir -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 
+
+
 # Copy function code
 COPY app.py ${LAMBDA_TASK_ROOT}
 
