@@ -1,9 +1,7 @@
 import os, sys
-import pinecone
 import requests
 import hashlib
 from bs4 import BeautifulSoup
-import openai
 from sitemapparser import SiteMapParser
 import time
 import nltk
@@ -11,15 +9,17 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import string
 import re
+import psycopg2
+from sentence_transformers import SentenceTransformer
+import pgvector
+from pgvector.psycopg2 import register_vector
 
-
-if len(sys.argv) != 2 or (str(sys.argv[1]) != "build" and str(sys.argv[1]) != "update"):
-    print("Usage: python create_embeddings.py build|update")
-    sys.exit()
-
-
+#if len(sys.argv) != 2 or (str(sys.argv[1]) != "build" and str(sys.argv[1]) != #"update"):
+#    print("Usage: python create_embeddings.py build|update")
+#    sys.exit()
 
 # download stopwords and punctuation
+print("Downloading stopwords and punctuation...")
 nltk.download('stopwords')
 nltk.download('punkt')
 stop_words = set(stopwords.words('english'))
@@ -27,25 +27,6 @@ stop_words = set(stopwords.words('english'))
 # Get the urls from the sitemap
 sitemap="https://docs.docker.com/sitemap.xml"
 urls = SiteMapParser(sitemap).get_urls()
-
-# Set OpenAI embeddings model
-openai.api_key = os.environ.get('OPENAI_API_KEY')
-model_id = "text-embedding-ada-002"
-
-# Connect to Pinecone
-print("Connecting to Pinecone...")
-environment="us-west1-gcp-free"
-index_name = "docker-docs-index"
-dimension=1536
-pinecone.init(api_key=os.environ.get('PINECONE_API_KEY'),environment=environment)
-
-# Delete and recreate the index if building
-if sys.argv[1] == "build":
-    if index_name in pinecone.list_indexes():
-        print("Deleting index...")
-        #pinecone.delete_index(index_name)
-    print("Creating index...")
-    #pinecone.create_index(index_name, metric="cosine", dimension=dimension)
 
 # define a function to clean a text
 def clean_text(text):
@@ -77,7 +58,17 @@ for url in urls:
     if url.loc.startswith("https://docs.docker.com/search/"):
         continue
     print(str(url.loc))
-    response = requests.get(str(url.loc))
+    success = False
+    attempts = 0
+    max_attempts = 3
+    while not success and attempts < max_attempts:
+        try:
+            response = requests.get(str(url.loc))
+            success = True
+        except requests.exceptions.RequestException as e:
+            print(e)
+            attempts += 1
+            time.sleep(20)
     if response.history: #page redirects
         continue
     html = response.text
@@ -136,38 +127,38 @@ for url in urls:
                 #print("Created: " + str(url.loc) +" " + str(heading.text))
 
 
-#connect to pinecone
-pinecone_index = pinecone.Index(index_name)
+# Get the password from an environment variable
+password = os.environ.get("POSTGRES_PASSWORD")
 
-# If updating, delete the nodes associated with changed pages
-if sys.argv[1] == "update":
-    updated_urls = []
-    for node in nodes:
-        if id not in pinecone_index.ids(): #something changed
-            pinecone_index.delete(filter={"url": str(node["url"])}) #delete the old nodes
-            updated_urls.append(url)
-    for node in nodes:
-        if node["url"] not in updated_urls:
-            nodes.remove(node)
+# Connect to PostgreSQL database
+conn = psycopg2.connect(host="postgres", dbname="docker-docs", user="postgres", password=password)
+register_vector(conn)
+cur = conn.cursor()
 
-#Get embeddings from OpenAI and add/update nodes in Pinecone
-print("Adding/updating nodes...")
-records={}
+
+# Drop table if exists
+cur.execute("DROP TABLE IF EXISTS items;")
+
+# Create table with vector column
+cur.execute("CREATE TABLE items (id text PRIMARY KEY, embedding vector(768), url text, heading text, text text);")
+#cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+#cur.execute("CREATE INDEX IF NOT EXISTS idx_items_embedding ON items USING vector (embedding vector_ops);")
+
+# Load sentence-transformers model
+model = SentenceTransformer('/usr/src/app/models/')
+
+
+# For each node, encode the text and insert the vector into the table
 for node in nodes:
-    heading=str(node["heading"])
+    print("Adding " + str(node["url"]) + " " + str(node["heading"]) + " to the database...")
+    heading = str(node["heading"])
     url = str(node["url"])
     text = str(node["text"])
     id = node["hash"]
-    metadata = {"url": url, "text": text, "heading": heading}
-    success=False
-    while not success:
-        try:
-            embedding=openai.Embedding.create(input=text, model=model_id).data[0].embedding
-            success=True
-        except Exception as e:
-            print(e)
-            time.sleep(20)
-    records.append({'id': id, 'values': embedding.tolist(), 'metadata': metadata})
-    #records = [(id, embedding, metadata)]
-pinecone_index.upsert(vectors=records)
+    embedding = model.encode(text)
+    cur.execute("INSERT INTO items (id, embedding, url, heading, text) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding;", (id, embedding, url, heading, text))
 
+# Commit changes and close connection
+conn.commit()
+cur.close()
+conn.close()
