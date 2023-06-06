@@ -191,7 +191,7 @@ for node in nodes:
     record = [(id, embedding, metadata)]
     success=False
     break_count=0
-    print("Adding to Pinecone: " + url + " " + heading)
+     print("Adding to Pinecone: " + url + " " + heading)
     while not success:
         try:
             pinecone_index.upsert(vectors=record)
