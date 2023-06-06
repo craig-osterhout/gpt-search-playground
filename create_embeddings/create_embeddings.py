@@ -1,5 +1,4 @@
 import os, sys
-import pinecone
 import requests
 import hashlib
 from bs4 import BeautifulSoup
@@ -11,6 +10,9 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import string
 import re
+import pgvector
+import psycopg2
+from pgvector.psycopg2 import register_vector
 
 
 if len(sys.argv) != 2 or (str(sys.argv[1]) != "build" and str(sys.argv[1]) != "update"):
@@ -33,19 +35,21 @@ openai.api_key = os.environ.get('OPENAI_API_KEY')
 model_id = "text-embedding-ada-002"
 
 # Connect to Pinecone
-print("Connecting to Pinecone...")
-environment="us-west1-gcp-free"
-index_name = "docker-docs-index"
-dimension=1536
-pinecone.init(api_key=os.environ.get('PINECONE_API_KEY'),environment=environment)
+# Get the password from an environment variable
+password = os.environ.get("POSTGRES_PASSWORD")
 
-# Delete and recreate the index if building
-if sys.argv[1] == "build":
-    if index_name in pinecone.list_indexes():
-        print("Deleting index...")
-        pinecone.delete_index(index_name)
-    print("Creating index...")
-    pinecone.create_index(index_name, metric="cosine", dimension=dimension)
+# Connect to PostgreSQL database
+conn = psycopg2.connect(host="postgres", dbname="docker-docs", user="postgres", password=password)
+register_vector(conn)
+cur = conn.cursor()
+
+# Drop table if exists
+cur.execute("DROP TABLE IF EXISTS items;")
+
+# Create table with vector column
+cur.execute("CREATE TABLE items (id text PRIMARY KEY, embedding vector(1536), url text, heading text, text text);")
+
+
 
 # define a function to clean a text
 def clean_text(text):
@@ -76,7 +80,7 @@ nodes = []
 for url in urls:
     if url.loc.startswith("https://docs.docker.com/search/"):
         continue
-    print(str(url.loc))
+    print("Scraping: " + str(url.loc))
     success = False
     break_count = 0
     while not success:
@@ -146,11 +150,9 @@ for url in urls:
                 #build the node
                 node = {"heading": str(heading.text), "url": str(url.loc), "text": str(text), "hash" : hash}
                 nodes.append(node)
-                print("Created: " + str(url.loc) +" " + str(heading.text))
+                print("Scraped: " + str(url.loc) +" " + str(heading.text))
 
 
-#connect to pinecone
-pinecone_index = pinecone.Index(index_name)
 
 # If updating, delete the nodes associated with changed pages
 if sys.argv[1] == "update":
@@ -191,17 +193,11 @@ for node in nodes:
     record = [(id, embedding, metadata)]
     success=False
     break_count=0
-     print("Adding to Pinecone: " + url + " " + heading)
-    while not success:
-        try:
-            pinecone_index.upsert(vectors=record)
-            success=True
-            break_count=0
-        except Exception as e:
-            print(e)
-            break_count+=1
-            time.sleep(10)
-            if break_count > 5:
-                print("Error adding/updating node. Skipping.")
-                break
+    print("Adding to db: " + url + " " + heading)
+    cur.execute("INSERT INTO items (id, embedding, url, heading, text) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding;", (id, embedding, url, heading, text))
 
+
+# Commit changes and close connection
+conn.commit()
+cur.close()
+conn.close()

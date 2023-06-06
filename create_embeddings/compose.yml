@@ -7,3 +7,18 @@ services:
     env_file:
       - .env
     command: ["${MODE}"]
+    depends_on:
+      - postgres # Add dependency on postgres service
+  postgres: # Add new service for postgres
+    image: pgvector # Use custom image name
+    build: # Add build context and dockerfile
+      context: .
+      dockerfile: Dockerfile.postgres
+    ports: # Expose port 5432 for postgres
+      - "5432:5432"
+    volumes: # Mount a volume for data persistence and init script
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - .env
+volumes:
+  pgdata: # Define a named volume for postgres data
