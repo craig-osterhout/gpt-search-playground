@@ -43,9 +43,9 @@ pinecone.init(api_key=os.environ.get('PINECONE_API_KEY'),environment=environment
 if sys.argv[1] == "build":
     if index_name in pinecone.list_indexes():
         print("Deleting index...")
-        #pinecone.delete_index(index_name)
+        pinecone.delete_index(index_name)
     print("Creating index...")
-    #pinecone.create_index(index_name, metric="cosine", dimension=dimension)
+    pinecone.create_index(index_name, metric="cosine", dimension=dimension)
 
 # define a function to clean a text
 def clean_text(text):
@@ -77,7 +77,20 @@ for url in urls:
     if url.loc.startswith("https://docs.docker.com/search/"):
         continue
     print(str(url.loc))
-    response = requests.get(str(url.loc))
+    success = False
+    break_count = 0
+    while not success:
+        try:
+            response = requests.get(str(url.loc))
+            success = True
+            break_count = 0
+        except Exception as e:
+            break_count += 1
+            print("Error getting url. Trying again.")
+            time.sleep(10)
+            if break_count > 5:
+                print("Error getting url. Skipping.")
+                break
     if response.history: #page redirects
         continue
     html = response.text
@@ -133,7 +146,7 @@ for url in urls:
                 #build the node
                 node = {"heading": str(heading.text), "url": str(url.loc), "text": str(text), "hash" : hash}
                 nodes.append(node)
-                #print("Created: " + str(url.loc) +" " + str(heading.text))
+                print("Created: " + str(url.loc) +" " + str(heading.text))
 
 
 #connect to pinecone
@@ -152,22 +165,43 @@ if sys.argv[1] == "update":
 
 #Get embeddings from OpenAI and add/update nodes in Pinecone
 print("Adding/updating nodes...")
-records={}
+
 for node in nodes:
+    record={}
     heading=str(node["heading"])
     url = str(node["url"])
     text = str(node["text"])
     id = node["hash"]
     metadata = {"url": url, "text": text, "heading": heading}
     success=False
+    break_count=0
+    print("Getting embedding for: " + url + " " + heading)
     while not success:
         try:
             embedding=openai.Embedding.create(input=text, model=model_id).data[0].embedding
             success=True
+            break_count=0
         except Exception as e:
+            break_count+=1
             print(e)
             time.sleep(20)
-    records.append({'id': id, 'values': embedding.tolist(), 'metadata': metadata})
-    #records = [(id, embedding, metadata)]
-pinecone_index.upsert(vectors=records)
+            if break_count > 5:
+                print("Error getting embedding. Skipping.")
+                break
+    record = [(id, embedding, metadata)]
+    success=False
+    break_count=0
+    print("Adding to Pinecone: " + url + " " + heading)
+    while not success:
+        try:
+            pinecone_index.upsert(vectors=record)
+            success=True
+            break_count=0
+        except Exception as e:
+            print(e)
+            break_count+=1
+            time.sleep(10)
+            if break_count > 5:
+                print("Error adding/updating node. Skipping.")
+                break
 
