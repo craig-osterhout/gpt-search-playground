@@ -22,3 +22,4 @@ services:
       - .env
 volumes:
   pgdata: # Define a named volume for postgres data
+    name: pgdata
