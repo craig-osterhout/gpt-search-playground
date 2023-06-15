@@ -34,12 +34,14 @@ urls = SiteMapParser(sitemap).get_urls()
 openai.api_key = os.environ.get('OPENAI_API_KEY')
 model_id = "text-embedding-ada-002"
 
-# Connect to Pinecone
-# Get the password from an environment variable
+# Get the postgres info from an environment variable
 password = os.environ.get("POSTGRES_PASSWORD")
+user = os.environ.get("POSTGRES_USER")
+dbname = os.environ.get("POSTGRES_DB")
+
 
 # Connect to PostgreSQL database
-conn = psycopg2.connect(host="postgres", dbname="docker-docs", user="postgres", password=password)
+conn = psycopg2.connect(host="postgres", dbname=dbname, user=user, password=password)
 register_vector(conn)
 cur = conn.cursor()
 
@@ -48,8 +50,6 @@ cur.execute("DROP TABLE IF EXISTS items;")
 
 # Create table with vector column
 cur.execute("CREATE TABLE items (id text PRIMARY KEY, embedding vector(1536), url text, heading text, text text);")
-
-
 
 # define a function to clean a text
 def clean_text(text):

@@ -9,11 +9,13 @@ from psycopg2.sql import Identifier, SQL
 def handler(event, context):
   print("Starting...")
 
-  # Get the password from an environment variable
+  # Get the db info from an environment variable
   password = os.environ.get("POSTGRES_PASSWORD")
+  user = os.environ.get("POSTGRES_USER")
+  dbname = os.environ.get("POSTGRES_DB")
 
   # Connect to PostgreSQL database
-  conn = psycopg2.connect(host="postgres", dbname="docker-docs", user="postgres", password=password)
+  conn = psycopg2.connect(host="postgres", dbname=dbname, user=user, password=password)
   register_vector(conn)
   cur = conn.cursor()
 
@@ -61,6 +63,7 @@ def handler(event, context):
   print("Number of words: " + str(num_words))
 
  # Truncate to 3000 words
+ # Don't want to go over the max tokens limit, and want to keep cost down
   if num_words > 3000:
     words = words[:3000]
     num_words = 3000
