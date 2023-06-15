@@ -78,5 +78,5 @@ It returns an answer based on the instruction prompts.
  - Better error handling
  - Frontend for docs
  - Optimize embeddings and embedding search
-   - Two-pass search? First get 10 most similiar pages based on entire page context. Then within those, get 5 most similar sections.
-   - Implement `Mode=update` for create emebeddings.
+   - Two-pass search? First get 10 most similar pages based on the entire page's context. Then within those, get 5 most similar sections.
+   - Implement `Mode=update` for embedding creation.
